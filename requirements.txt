@@ -1,0 +1,9 @@
+opencv-python==3.4.5.20
+pyzbar>=0.1.8
+scikit-learn>=0.20.3
+numpy>=1.13.3
+structlog>=19.1.0
+
+matplotlib>=3.0.3
+
+black>=19.3b0
