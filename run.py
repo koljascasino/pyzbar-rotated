@@ -2,6 +2,7 @@ import os
 from shutil import copyfile
 
 import cv2
+import numpy as np
 from pyzbar import pyzbar
 import structlog
 
@@ -31,6 +32,31 @@ def scale_originals():
         )
 
 
+def concat(img1, img2, axis=0):
+    """Concatenate two images along their height or width. Pad if images do not have the same shape."""
+    assert axis in (0, 1)
+
+    if img1 is None:
+        return img2
+    if img2 is None:
+        return img1
+
+    h1, w1 = img1.shape[:2]
+    h2, w2 = img2.shape[:2]
+
+    if axis == 0:
+        vis = np.zeros((h1 + h2, max(w1, w2), 3), np.uint8)
+        vis[:h1, :w1, :3] = img1
+        vis[h1:h1+h2, :w2, :3] = img2
+
+    else:
+        vis = np.zeros((max(h1, h2), w1 + w2, 3), np.uint8)
+        vis[:h1, :w1, :3] = img1
+        vis[:h2, w1:w1+w2, :3] = img2
+
+    return vis
+
+
 def main():
 
     # Create scaled version of images if necessary
@@ -51,10 +77,13 @@ def main():
         img = cv2.imread(settings.PATH_SCALED + file_name)
 
         # Find list of barcode regions (rotated rectangle) within image
-        barcode_rects = find_barcodes(img, debug=settings.DEBUG)
+        barcode_rects, debug_img = find_barcodes(img, debug=settings.DEBUG)
         success_rect = None
         invalid_rects_count = 0
         false_positive_data = []
+        barcode_images = None
+
+        # Decode barcode regions
         for barcode_rect in barcode_rects:
 
             # Decode barcode image
@@ -73,10 +102,9 @@ def main():
                 else:
                     false_positive_data.append(data)
 
+            # Save barcode image
             if settings.DEBUG:
-                cv2.namedWindow("barcode", cv2.WINDOW_NORMAL)
-                cv2.imshow("barcode", barcode_img)
-                cv2.waitKey(0)
+                barcode_images = concat(barcode_images, barcode_img)
 
         # Log result
         logger.info(
@@ -88,6 +116,13 @@ def main():
             invalid_rects_count=invalid_rects_count,
             false_positive_data=false_positive_data,
         )
+
+        # In debug mode show visualization of detection algorithm
+        if settings.DEBUG:
+            debug_img = concat(debug_img, barcode_images, axis=1)
+            cv2.namedWindow("img", cv2.WINDOW_NORMAL)
+            cv2.imshow("img", debug_img)
+            cv2.waitKey(0)
 
 
 if __name__ == "__main__":
