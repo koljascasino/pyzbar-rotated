@@ -36,12 +36,31 @@ Cluster = namedtuple("Cluster", ["number", "count", "color"])
 
 
 class BarcodeRect(object):
-    def __init__(self, center_x, center_y, width, height, theta):
+
+    def __init__(self, center_x, center_y, width, height, theta, cluster, box):
         self.center_x = center_x
         self.center_y = center_y
         self.width = width
         self.height = height
         self.theta = theta
+        self.cluster = cluster
+        self.box = box
+
+    @classmethod
+    def from_coords(cls, coords, cluster):
+        box = _get_bounding_box(coords)
+        return BarcodeRect(
+            center_x=box[0][0],
+            center_y=box[0][1],
+            width=box[1, 0],
+            height=box[1, 1],
+            theta=box[2, 0],
+            cluster=cluster,
+            box=box[3:].astype(int))
+
+    @property
+    def area(self):
+        return self.width * self.height
 
     def json(self):
         return {
@@ -133,11 +152,10 @@ def _plot_clustering_space(x, y, clusters, cluster_idx):
     plt.show()
 
 
-def _draw_cluster_boxes(img, cluster_boxes):
+def _draw_final_boxes(img, results):
     """Draw bounding box around cluster of bars."""
-    for idx in range(len(cluster_boxes)):
-        box = cluster_boxes[idx, 3:, :].astype(int)
-        cv2.drawContours(img, [box], 0, (0, 0, 255), 1)
+    for rect in results:
+        cv2.drawContours(img, [rect.box], 0, (0, 0, 255), 1)
 
 
 def _colorize_clusters(img, blobs, clusters, cluster_idx):
@@ -209,48 +227,77 @@ def find_barcodes(img, debug=False):
     # No bars found
     if len(bar_boxes) == 0:
         logger.debug("No bars found in image.")
-        return []
+        return [], img
 
     # Cluster bars in (theta, height, center_x, center_y) space with appropriate scaling
     clusters, cluster_idx = _cluster_bars(bar_boxes, max(img.shape), plot=debug)
 
     # Construct rotated bounding box around clusters of bars
-    cluster_boxes = np.zeros((len(clusters), 7, 2))
     results = []
     for idx, cluster in enumerate(clusters):
         if cluster.number == -1:
             continue
-
         coords = bar_boxes[np.where(cluster_idx == cluster.number), 3:, :]
         coords = coords.reshape(-1, 2).astype(int)
-        box = _get_bounding_box(coords)
+        results.append(BarcodeRect.from_coords(coords, cluster))
+
+    # Colorize clusters
+    if debug:
+        img = _colorize_clusters(img, blobs, clusters, cluster_idx)
+
+    # Run post processing
+    results = post_processing(results, bar_boxes, cluster_idx)
+
+    # Draw box around barcodes identifed
+    if debug:
+        _draw_final_boxes(img, results)
+
+    return results, img
+
+
+def combine_overlapping_areas(results, cluster_idx):
+    """Combine overlapping or adjacent barcode areas.
+
+    Recursively try combining all pairs of barcode areas in O(N^2). If the combined area of two barcodes is less than
+    or little more than the sum of the two combined areas, then do combine them.
+    """
+    for i in range(len(results)):
+        rect = results[i]
+        for j in range(i+1, len(results)):
+            rect2 = results[j]
+            combined = BarcodeRect.from_coords(np.vstack((rect.box, rect2.box)), rect.cluster)
+            if combined.area <= (rect.area + rect2.area) * 1.05:
+                results[i] = combined
+                cluster_idx[np.where(cluster_idx == rect2.cluster.number)] = rect.cluster.number
+                return combine_overlapping_areas(results[:j] + results[j+1:], cluster_idx)
+
+    return results
+
+
+def post_processing(results, bar_boxes, cluster_idx):
+    """Post process identified barcode regions, combine overlapping or adjacent areas."""
+    combined = combine_overlapping_areas(results, cluster_idx)
+    filtered = []
+    for rect in combined:
 
         # Barcode should be a horizontal series of bars, not a a vertical stack
         # i.e barcode box should have 90° different orientation than bars
         # If this is not the case ignore the candidate
         mean_bar_theta = np.mean(
-            bar_boxes[np.where(cluster_idx == cluster.number), 2, 0]
+            bar_boxes[np.where(cluster_idx == rect.cluster.number), 2, 0]
         )
-        if abs(box[2, 0] - mean_bar_theta) < np.pi / 4:
+        if abs(rect.theta - mean_bar_theta) < np.pi / 4:
             continue
-
-        # Save result
-        cluster_boxes[idx, :, :] = box
 
         # Convert angle from perpendicular middle line (in radians) to angle (in degrees)
         # Switch width and height
-        center_x, center_y = box[0]
-        width = (np.ceil(box[1, 1])).astype(int)
-        height = (np.ceil(box[1, 0])).astype(int)
-        theta = (box[2, 0] * 180 / np.pi + 180) % 180 - 90
+        filtered.append(BarcodeRect(
+            center_x=rect.center_x,
+            center_y=rect.center_y,
+            width=np.ceil(rect.height).astype(int),
+            height=np.ceil(rect.width).astype(int),
+            theta=(rect.theta * 180 / np.pi + 180) % 180 - 90,
+            cluster=rect.cluster,
+            box=rect.box))
 
-        results.append(BarcodeRect(center_x, center_y, width, height, theta))
-
-    # Draw box around barcodes identifed
-    if debug:
-        img = _colorize_clusters(img, blobs, clusters, cluster_idx)
-        _draw_cluster_boxes(img, cluster_boxes)
-        cv2.namedWindow("img", cv2.WINDOW_NORMAL)
-        cv2.imshow("img", img)
-
-    return results
+    return filtered
