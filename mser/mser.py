@@ -36,7 +36,6 @@ Cluster = namedtuple("Cluster", ["number", "count", "color"])
 
 
 class BarcodeRect(object):
-
     def __init__(self, center_x, center_y, width, height, theta, cluster, box):
         self.center_x = center_x
         self.center_y = center_y
@@ -56,7 +55,8 @@ class BarcodeRect(object):
             height=box[1, 1],
             theta=box[2, 0],
             cluster=cluster,
-            box=box[3:].astype(int))
+            box=box[3:].astype(int),
+        )
 
     @property
     def area(self):
@@ -77,11 +77,7 @@ class BarcodeRect(object):
         Rotate original image around center with angle theta (in deg)
         then crop the image according to width and height of the barcode
         """
-        shape = (
-            img.shape[1],
-            img.shape[0],
-        )  # cv2.warpAffine expects shape in (length, height)
-
+        shape = (max(img.shape), max(img.shape))
         matrix = cv2.getRotationMatrix2D(
             center=(self.center_x, self.center_y), angle=self.theta, scale=1
         )
@@ -263,13 +259,19 @@ def combine_overlapping_areas(results, cluster_idx):
     """
     for i in range(len(results)):
         rect = results[i]
-        for j in range(i+1, len(results)):
+        for j in range(i + 1, len(results)):
             rect2 = results[j]
-            combined = BarcodeRect.from_coords(np.vstack((rect.box, rect2.box)), rect.cluster)
+            combined = BarcodeRect.from_coords(
+                np.vstack((rect.box, rect2.box)), rect.cluster
+            )
             if combined.area <= (rect.area + rect2.area) * 1.05:
                 results[i] = combined
-                cluster_idx[np.where(cluster_idx == rect2.cluster.number)] = rect.cluster.number
-                return combine_overlapping_areas(results[:j] + results[j+1:], cluster_idx)
+                cluster_idx[
+                    np.where(cluster_idx == rect2.cluster.number)
+                ] = rect.cluster.number
+                return combine_overlapping_areas(
+                    results[:j] + results[j + 1 :], cluster_idx
+                )
 
     return results
 
@@ -291,13 +293,16 @@ def post_processing(results, bar_boxes, cluster_idx):
 
         # Convert angle from perpendicular middle line (in radians) to angle (in degrees)
         # Switch width and height
-        filtered.append(BarcodeRect(
-            center_x=rect.center_x,
-            center_y=rect.center_y,
-            width=np.ceil(rect.height).astype(int),
-            height=np.ceil(rect.width).astype(int),
-            theta=(rect.theta * 180 / np.pi + 180) % 180 - 90,
-            cluster=rect.cluster,
-            box=rect.box))
+        filtered.append(
+            BarcodeRect(
+                center_x=rect.center_x,
+                center_y=rect.center_y,
+                width=np.ceil(rect.height).astype(int),
+                height=np.ceil(rect.width).astype(int),
+                theta=(rect.theta * 180 / np.pi + 180) % 180 - 90,
+                cluster=rect.cluster,
+                box=rect.box,
+            )
+        )
 
     return filtered
