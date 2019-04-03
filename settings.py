@@ -27,7 +27,15 @@ LOGGING_CONFIG = {
         },
         "console": {"class": "logging.StreamHandler", "level": logging.DEBUG},
     },
-    "root": {"handlers": ["console", "file"], "level": logging.DEBUG},
+    "loggers": {
+        "__main__": {
+            "handlers": ["console", "file"],
+            "level": logging.DEBUG,
+            "propagate": False,
+        },
+        "mser": {"handlers": ["console"], "level": logging.DEBUG, "propagate": False},
+    },
+    "root": {"handlers": ["console", "file"], "level": logging.WARNING},
 }
 logging.config.dictConfig(LOGGING_CONFIG)
 

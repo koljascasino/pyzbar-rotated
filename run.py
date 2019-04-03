@@ -9,7 +9,7 @@ import structlog
 import settings
 from mser.mser import find_barcodes
 
-logger = structlog.get_logger()
+logger = structlog.get_logger(__name__)
 
 
 def get_file_names(path):
@@ -47,12 +47,12 @@ def concat(img1, img2, axis=0):
     if axis == 0:
         vis = np.zeros((h1 + h2, max(w1, w2), 3), np.uint8)
         vis[:h1, :w1, :3] = img1
-        vis[h1:h1+h2, :w2, :3] = img2
+        vis[h1 : h1 + h2, :w2, :3] = img2
 
     else:
         vis = np.zeros((max(h1, h2), w1 + w2, 3), np.uint8)
         vis[:h1, :w1, :3] = img1
-        vis[:h2, w1:w1+w2, :3] = img2
+        vis[:h2, w1 : w1 + w2, :3] = img2
 
     return vis
 

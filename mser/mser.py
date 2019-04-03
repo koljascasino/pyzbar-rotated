@@ -1,13 +1,15 @@
-from math import cos, sin
 from collections import namedtuple
-from structlog import get_logger
+from math import cos, sin
 
 import cv2
 import numpy as np
+import shapely.affinity
+import shapely.geometry
 from matplotlib import pyplot as plt
 from sklearn.cluster import DBSCAN
+from structlog import get_logger
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 MARGIN = 5  # Margin around cropped barcode image
 np.random.seed(0)
@@ -57,6 +59,16 @@ class BarcodeRect(object):
             cluster=cluster,
             box=box[3:].astype(int),
         )
+
+    def get_contour(self):
+        c = shapely.geometry.box(
+            -self.width / 2.0, -self.height / 2.0, self.width / 2.0, self.height / 2.0
+        )
+        rc = shapely.affinity.rotate(c, self.theta, use_radians=True)
+        return shapely.affinity.translate(rc, self.center_x, self.center_y)
+
+    def intersection(self, other):
+        return self.get_contour().intersection(other.get_contour())
 
     @property
     def area(self):
@@ -258,17 +270,18 @@ def combine_overlapping_areas(results, cluster_idx):
     or little more than the sum of the two combined areas, then do combine them.
     """
     for i in range(len(results)):
-        rect = results[i]
+        this = results[i]
         for j in range(i + 1, len(results)):
-            rect2 = results[j]
-            combined = BarcodeRect.from_coords(
-                np.vstack((rect.box, rect2.box)), rect.cluster
+            other = results[j]
+            intersection = this.intersection(other)
+            union = BarcodeRect.from_coords(
+                np.vstack((this.box, other.box)), this.cluster
             )
-            if combined.area <= (rect.area + rect2.area) * 1.05:
-                results[i] = combined
+            if intersection.area > 0 or union.area <= (this.area + other.area) * 1.05:
+                results[i] = union
                 cluster_idx[
-                    np.where(cluster_idx == rect2.cluster.number)
-                ] = rect.cluster.number
+                    np.where(cluster_idx == other.cluster.number)
+                ] = this.cluster.number
                 return combine_overlapping_areas(
                     results[:j] + results[j + 1 :], cluster_idx
                 )
