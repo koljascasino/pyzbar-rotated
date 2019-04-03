@@ -24,7 +24,8 @@ def scale_originals():
     for file_name in get_file_names(settings.PATH_ORIGINAL):
         logger.debug(file_name)
         img = cv2.imread(settings.PATH_ORIGINAL + file_name)
-        scaled = cv2.resize(img, (640, 480))
+        factor = 640.0 / max(img.shape)
+        scaled = cv2.resize(img, (0, 0), fx=factor, fy=factor)
         cv2.imwrite(settings.PATH_SCALED + file_name, scaled)
         copyfile(
             settings.PATH_ORIGINAL + file_name + ".txt",
