@@ -1,4 +1,5 @@
 import os
+import time
 
 import cv2
 import numpy as np
@@ -13,6 +14,8 @@ logger = structlog.get_logger(__name__)
 
 def main():
     """Decode the 1D barcodes in a set of images and log the result."""
+    stats = []
+    start = time.time()
     for file_name in _get_file_names(settings.PATH):
 
         # load image and detection mask
@@ -47,6 +50,7 @@ def main():
         r = barcode_regions_mask.max(axis=-1).astype(bool)
         u = ground_truth_mask.max(axis=-1).astype(bool)
         jaccard_accuracy = float((r & u).sum()) / (r | u).sum()
+        stats.append(jaccard_accuracy)
 
         # Calculate bounding box of ground truth
         bbox = BoundingBox.from_mask(ground_truth_mask)
@@ -78,6 +82,18 @@ def main():
             cv2.namedWindow("img", cv2.WINDOW_NORMAL)
             cv2.imshow("img", debug_img)
             cv2.waitKey(0)
+
+    # Calculate final stats
+    end = time.time()
+    running_time = end - start
+    accuracy = np.array(stats).mean()
+    successes = np.where(np.array(stats) > 0.5)[0]
+    logger.info(
+        "Final stats",
+        accuracy=accuracy,
+        detection_rate=float(len(successes)) / len(stats),
+        fps=len(stats) / running_time,
+    )
 
 
 def _get_file_names(path):
