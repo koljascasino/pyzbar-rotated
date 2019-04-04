@@ -13,8 +13,9 @@ PATH = "./data/1d_barcode_extended_plain/Original/"
 PATH_GROUND_TRUTH = "./data/1d_barcode_extended_plain/Detection/"
 
 # Use this flag to show picture of how MSER algorithm detects regions of bars and and clusters them
-DEBUG = True
-DEBUG_IMAGE = None  # "05102009106.png"
+DEBUG_IMAGE = None  # "05102009082.png"
+SHOW_VISUAL = False
+PLOT_CLUSTERING_SPACE = False
 
 # Logger config
 LOGGING_CONFIG = {

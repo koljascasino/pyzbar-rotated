@@ -9,6 +9,8 @@ from matplotlib import pyplot as plt
 from sklearn.cluster import DBSCAN
 from structlog import get_logger
 
+import settings
+
 logger = get_logger(__name__)
 
 MARGIN = 5  # Margin around cropped barcode image
@@ -184,7 +186,7 @@ def _colorize_clusters(img, blobs, clusters, cluster_idx):
     return img
 
 
-def _cluster_bars(bar_boxes, img_size, plot=False):
+def _cluster_bars(bar_boxes, img_size):
     """Cluster bars in (theta, height, center_x, center_y) space with appropriate scaling."""
     center_x = bar_boxes[:, 0, 0] / img_size
     center_y = bar_boxes[:, 0, 1] / img_size
@@ -203,13 +205,13 @@ def _cluster_bars(bar_boxes, img_size, plot=False):
         color = [0, 0, 0] if number == -1 else colors[np.random.choice(len(colors))]
         clusters.append(Cluster(number, count, color=color))
 
-    if plot:
+    if settings.PLOT_CLUSTERING_SPACE:
         _plot_clustering_space(thetas, heights, clusters, cluster_idx)
 
     return clusters, cluster_idx
 
 
-def find_barcodes(img, debug=False):
+def find_barcodes(img):
     """Find barcodes within image and return a list of extracted barcode images."""
 
     # Run MSER on gray scale image to detect bars
@@ -238,7 +240,7 @@ def find_barcodes(img, debug=False):
         return [], img
 
     # Cluster bars in (theta, height, center_x, center_y) space with appropriate scaling
-    clusters, cluster_idx = _cluster_bars(bar_boxes, max(img.shape), plot=debug)
+    clusters, cluster_idx = _cluster_bars(bar_boxes, max(img.shape))
 
     # Construct rotated bounding box around clusters of bars
     results = []
@@ -250,7 +252,7 @@ def find_barcodes(img, debug=False):
         results.append(BarcodeRect.from_coords(coords, cluster))
 
     # Colorize clusters
-    if debug:
+    if settings.SHOW_VISUAL:
         img = _colorize_clusters(img, blobs, clusters, cluster_idx)
 
     # Run post processing
