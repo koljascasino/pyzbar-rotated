@@ -2,18 +2,19 @@ import logging.config
 
 import structlog
 
-# Directory where test images can be found
-# Download from http://artelab.dista.uninsubria.it/downloads/datasets/barcode/medium_barcode_1d/medium_barcode_1d.html
+# ArTe-Lab Rotated Barcode Database (368 images)
+# Download extended 1d_barcode_extended_plain.zip from
+# http://artelab.dista.uninsubria.it/downloads/datasets/barcode/hough_barcode_1d/hough_barcode_1d.html
 # If you use this dataset in your work, please add the following reference:
-# Neural Image Restoration For Decoding 1-D Barcodes Using Common Camera Phones
-# Alessandro Zamberletti, Ignazio Gallo, Moreno Carullo and Elisabetta Binaghi
-# Computer Vision, Imaging and Computer Graphics. Theory and Applications, Springer Berlin Heidelberg, 2011
-PATH_ORIGINAL = "./data/BarcodeDataSets/Dataset1/"
-PATH_SCALED = "./data/BarcodeDataSets/Dataset1/scaled/"
+# Robust Angle Invariant 1D Barcode Detection
+# Alessandro Zamberletti, Ignazio Gallo and Simone Albertini
+# Proceedings of the 2nd Asian Conference on Pattern Recognition (ACPR), Okinawa, Japan, 2013
+PATH = "./data/1d_barcode_extended_plain/Original/"
+PATH_GROUND_TRUTH = "./data/1d_barcode_extended_plain/Detection/"
 
 # Use this flag to show picture of how MSER algorithm detects regions of bars and and clusters them
-DEBUG = False
-DEBUG_IMAGE = "PICT0013.JPG"
+DEBUG = True
+DEBUG_IMAGE = None  # "05102009106.png"
 
 # Logger config
 LOGGING_CONFIG = {

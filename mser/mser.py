@@ -106,6 +106,12 @@ class BarcodeRect(object):
 
         return cropped
 
+    def get_mask(self, img):
+        """Returns a binary mask of the barcode in an image with the same shape as the original image. """
+        mask = np.zeros(img.shape, np.uint8)
+        cv2.drawContours(mask, [self.box], 0, (255, 255, 255), -1)
+        return mask
+
 
 def _bgr2rgb(bgr):
     return [float(bgr[2]) / 255.0, float(bgr[1]) / 255.0, float(bgr[0]) / 255.0]
@@ -158,12 +164,6 @@ def _plot_clustering_space(x, y, clusters, cluster_idx):
     cluster_colors_rgb = [_bgr2rgb(color_dict[c]) for c in cluster_idx]
     plt.scatter(x, y, c=cluster_colors_rgb, linewidths=0)
     plt.show()
-
-
-def _draw_final_boxes(img, results):
-    """Draw bounding box around cluster of bars."""
-    for rect in results:
-        cv2.drawContours(img, [rect.box], 0, (0, 0, 255), 1)
 
 
 def _colorize_clusters(img, blobs, clusters, cluster_idx):
@@ -255,10 +255,6 @@ def find_barcodes(img, debug=False):
 
     # Run post processing
     results = post_processing(results, bar_boxes, cluster_idx)
-
-    # Draw box around barcodes identifed
-    if debug:
-        _draw_final_boxes(img, results)
 
     return results, img
 

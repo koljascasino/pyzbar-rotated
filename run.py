@@ -1,5 +1,4 @@
 import os
-from shutil import copyfile
 
 import cv2
 import numpy as np
@@ -12,28 +11,73 @@ from mser.mser import find_barcodes
 logger = structlog.get_logger(__name__)
 
 
-def get_file_names(path):
+def main():
+    """Decode the 1D barcodes in a set of images and log the result."""
+    for file_name in _get_file_names(settings.PATH):
+
+        # load image and detection mask
+        img = cv2.imread(settings.PATH + file_name)
+        ground_truth_mask = cv2.imread(settings.PATH_GROUND_TRUTH + file_name)
+
+        # Find list of barcode regions (rotated rectangle) within image
+        barcode_regions, debug_img = find_barcodes(img, debug=settings.DEBUG)
+        barcode_regions_mask = np.zeros(img.shape, np.uint8)
+        barcode_images = None
+        result = []
+
+        # Decode barcode regions
+        for barcode_region in barcode_regions:
+
+            # Decode barcode image
+            barcode_img = barcode_region.extract_from(img)
+            barcode_mask = barcode_region.get_mask(img)
+            decoded = pyzbar.decode(barcode_img)
+
+            # Combine masks from multiple regions
+            barcode_regions_mask += barcode_mask
+
+            # Keep result for logging
+            data = ", ".join([d.data.decode("utf-8") for d in decoded])
+            result.append({"data": data, "region": barcode_region.json()})
+
+            if settings.DEBUG:
+                barcode_images = _img_concat(barcode_images, barcode_img)
+
+        # Jaccard_accuracy = intersection over union of the two binary masks
+        r = barcode_regions_mask.max(axis=-1).astype(bool)
+        u = ground_truth_mask.max(axis=-1).astype(bool)
+        jaccard_accuracy = float((r & u).sum()) / (r | u).sum()
+
+        # Log result
+        logger.info(
+            "Image processed",
+            file_name=file_name,
+            jaccard_accuracy=jaccard_accuracy,
+            success=jaccard_accuracy > 0.5,
+            result=result,
+        )
+
+        # In debug mode show visualization of detection algorithm
+        if settings.DEBUG:
+            error_img = np.zeros(img.shape, np.uint8)
+            error_img[r & u] = np.array([255, 255, 255], dtype=np.uint8)
+            error_img[np.logical_xor(r, u)] = np.array([0, 0, 255], dtype=np.uint8)
+            debug_img = cv2.addWeighted(debug_img, 0.6, error_img, 0.4, 0)
+            debug_img = _img_concat(debug_img, barcode_images, axis=1)
+            cv2.namedWindow("img", cv2.WINDOW_NORMAL)
+            cv2.imshow("img", debug_img)
+            cv2.waitKey(0)
+
+
+def _get_file_names(path):
+    """Get the list of file names with barcode images to decode."""
     if settings.DEBUG and settings.DEBUG_IMAGE:
         return [settings.DEBUG_IMAGE]
     else:
-        return [f for f in os.listdir(path) if f[-4:].lower() == ".jpg"]
+        return os.listdir(path)
 
 
-def scale_originals():
-    logger.debug("Scaling files.")
-    for file_name in get_file_names(settings.PATH_ORIGINAL):
-        logger.debug(file_name)
-        img = cv2.imread(settings.PATH_ORIGINAL + file_name)
-        factor = 640.0 / max(img.shape)
-        scaled = cv2.resize(img, (0, 0), fx=factor, fy=factor)
-        cv2.imwrite(settings.PATH_SCALED + file_name, scaled)
-        copyfile(
-            settings.PATH_ORIGINAL + file_name + ".txt",
-            settings.PATH_SCALED + file_name + ".txt",
-        )
-
-
-def concat(img1, img2, axis=0):
+def _img_concat(img1, img2, axis=0):
     """Concatenate two images along their height or width. Pad if images do not have the same shape."""
     assert axis in (0, 1)
 
@@ -56,74 +100,6 @@ def concat(img1, img2, axis=0):
         vis[:h2, w1 : w1 + w2, :3] = img2
 
     return vis
-
-
-def main():
-
-    # Create scaled version of images if necessary
-    directory = os.path.dirname(settings.PATH_SCALED)
-    if not os.path.exists(directory):
-        logger.debug("No images found. Creating {}.".format(directory))
-        os.makedirs(directory)
-        scale_originals()
-
-    # Loop over images
-    for file_name in get_file_names(settings.PATH_SCALED):
-
-        # Read solution
-        with open(settings.PATH_SCALED + file_name + ".txt", "r") as file:
-            solution_data = file.read().strip()
-
-        # load image
-        img = cv2.imread(settings.PATH_SCALED + file_name)
-
-        # Find list of barcode regions (rotated rectangle) within image
-        barcode_rects, debug_img = find_barcodes(img, debug=settings.DEBUG)
-        success_rect = None
-        invalid_rects_count = 0
-        false_positive_data = []
-        barcode_images = None
-
-        # Decode barcode regions
-        for barcode_rect in barcode_rects:
-
-            # Decode barcode image
-            barcode_img = barcode_rect.extract_from(img)
-            results = pyzbar.decode(barcode_img)
-
-            # Barcode region cannot be decoded its an invalid barcode region
-            if len(results) == 0:
-                invalid_rects_count += 1
-            for r in results:
-
-                # Check result
-                data = r.data.decode("utf-8")
-                if data == solution_data:
-                    success_rect = barcode_rect
-                else:
-                    false_positive_data.append(data)
-
-            # Save barcode image
-            if settings.DEBUG:
-                barcode_images = concat(barcode_images, barcode_img)
-
-        # Log result
-        logger.info(
-            "Image processed",
-            file_name=file_name,
-            data=solution_data,
-            success=success_rect is not None,
-            rect=success_rect.json() if success_rect is not None else None,
-            invalid_rects_count=invalid_rects_count,
-            false_positive_data=false_positive_data,
-        )
-
-        # In debug mode show visualization of detection algorithm
-        if settings.DEBUG:
-            debug_img = concat(debug_img, barcode_images, axis=1)
-            cv2.namedWindow("img", cv2.WINDOW_NORMAL)
-            cv2.imshow("img", debug_img)
-            cv2.waitKey(0)
 
 
 if __name__ == "__main__":
