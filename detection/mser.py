@@ -7,8 +7,8 @@ from sklearn.cluster import DBSCAN
 from structlog import get_logger
 
 import settings
-from models import BarcodeRect
-from utils import get_rect
+from detection.models import BarcodeRect
+from detection.utils import get_rect
 
 logger = get_logger(__name__)
 
@@ -142,7 +142,7 @@ def find_barcodes(img):
         results.append(BarcodeRect.from_coords(coords, cluster))
 
     # Colorize clusters
-    if settings.SHOW_VISUAL:
+    if settings.COLORIZE_CLUSTERS:
         img = _colorize_clusters(img, blobs, clusters, cluster_idx)
 
     # Run post processing
@@ -190,20 +190,6 @@ def post_processing(results, bar_boxes, cluster_idx):
             bar_boxes[np.where(cluster_idx == rect.cluster.number), 2, 0]
         )
         if abs(rect.theta - mean_bar_theta) < np.pi / 4:
-            continue
-
-        # Convert angle from perpendicular middle line (in radians) to angle (in degrees)
-        # Switch width and height
-        filtered.append(
-            BarcodeRect(
-                center_x=rect.center_x,
-                center_y=rect.center_y,
-                width=np.ceil(rect.height).astype(int),
-                height=np.ceil(rect.width).astype(int),
-                theta=(rect.theta * 180 / np.pi + 180) % 180 - 90,
-                cluster=rect.cluster,
-                box=rect.box,
-            )
-        )
+            filtered.append(rect)
 
     return filtered

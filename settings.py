@@ -9,12 +9,15 @@ import structlog
 # Robust Angle Invariant 1D Barcode Detection
 # Alessandro Zamberletti, Ignazio Gallo and Simone Albertini
 # Proceedings of the 2nd Asian Conference on Pattern Recognition (ACPR), Okinawa, Japan, 2013
-PATH = "./data/1d_barcode_extended_plain/Original/"
-PATH_GROUND_TRUTH = "./data/1d_barcode_extended_plain/Detection/"
+PATH = "../datasets/artelab/original/"
+PATH_GT_MASKS = "../datasets/artelab/mask/"
 
-# Use this flag to show picture of how MSER algorithm detects regions of bars and and clusters them
-DEBUG_IMAGE = None  # "05102009082.png"
-SHOW_VISUAL = False
+# If an image is given here the main algorithm will run on this one image only rather then on the entire dataset
+IMAGE = None
+
+# Set these flags to show a visual of the detection algorithm
+SHOW_IMAGE = False
+COLORIZE_CLUSTERS = False
 PLOT_CLUSTERING_SPACE = False
 
 # Logger config
