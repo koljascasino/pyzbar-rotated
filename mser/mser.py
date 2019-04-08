@@ -1,19 +1,17 @@
 from collections import namedtuple
-from math import cos, sin
 
 import cv2
 import numpy as np
-import shapely.affinity
-import shapely.geometry
 from matplotlib import pyplot as plt
 from sklearn.cluster import DBSCAN
 from structlog import get_logger
 
 import settings
+from models import BarcodeRect
+from utils import get_rect
 
 logger = get_logger(__name__)
 
-MARGIN = 5  # Margin around cropped barcode image
 np.random.seed(0)
 
 colors = np.array(
@@ -39,116 +37,8 @@ colors = np.array(
 Cluster = namedtuple("Cluster", ["number", "count", "color"])
 
 
-class BarcodeRect(object):
-    def __init__(self, center_x, center_y, width, height, theta, cluster, box):
-        self.center_x = center_x
-        self.center_y = center_y
-        self.width = width
-        self.height = height
-        self.theta = theta
-        self.cluster = cluster
-        self.box = box
-
-    @classmethod
-    def from_coords(cls, coords, cluster):
-        box = _get_bounding_box(coords)
-        return BarcodeRect(
-            center_x=box[0][0],
-            center_y=box[0][1],
-            width=box[1, 0],
-            height=box[1, 1],
-            theta=box[2, 0],
-            cluster=cluster,
-            box=box[3:].astype(int),
-        )
-
-    def get_contour(self):
-        c = shapely.geometry.box(
-            -self.width / 2.0, -self.height / 2.0, self.width / 2.0, self.height / 2.0
-        )
-        rc = shapely.affinity.rotate(c, self.theta, use_radians=True)
-        return shapely.affinity.translate(rc, self.center_x, self.center_y)
-
-    def intersection(self, other):
-        return self.get_contour().intersection(other.get_contour())
-
-    @property
-    def area(self):
-        return self.width * self.height
-
-    def json(self):
-        return {
-            "center_x": self.center_y,
-            "center_y": self.center_y,
-            "width": self.width,
-            "height": self.height,
-            "theta": self.theta,
-        }
-
-    def extract_from(self, img):
-        """Extract barcode image from original image where barcode was found
-
-        Rotate original image around center with angle theta (in deg)
-        then crop the image according to width and height of the barcode
-        """
-        shape = (max(img.shape), max(img.shape))
-        matrix = cv2.getRotationMatrix2D(
-            center=(self.center_x, self.center_y), angle=self.theta, scale=1
-        )
-        rotated = cv2.warpAffine(src=img, M=matrix, dsize=shape)
-
-        width = self.width + MARGIN
-        height = self.height + MARGIN
-        x = int(self.center_x - width / 2)
-        y = int(self.center_y - height / 2)
-        x = min(img.shape[1], max(0, x))
-        y = min(img.shape[0], max(0, y))
-
-        cropped = rotated[y : y + height, x : x + width]
-
-        return cropped
-
-    def get_mask(self, img):
-        """Returns a binary mask of the barcode in an image with the same shape as the original image. """
-        mask = np.zeros(img.shape, np.uint8)
-        cv2.drawContours(mask, [self.box], 0, (255, 255, 255), -1)
-        return mask
-
-
 def _bgr2rgb(bgr):
     return [float(bgr[2]) / 255.0, float(bgr[1]) / 255.0, float(bgr[0]) / 255.0]
-
-
-def _get_bounding_box(coords):
-    """Calculate minimum rotated rectangle containing list of points"""
-    rect = cv2.minAreaRect(coords)
-    center_x = rect[0][0]
-    center_y = rect[0][1]
-    width = rect[1][0]
-    height = rect[1][1]
-    angle = (rect[2] + 90) % 180 - 90
-
-    # Switch height and width if width > height
-    if width > height:
-        width = rect[1][1]
-        height = rect[1][0]
-        angle = rect[2] % 180 - 90
-
-    # Parametrize perpendicular middle line with (theta, rho)
-    # theta = angle of perpendicular middle line in radians
-    # rho = distance from origin to perpendicular middle line (Hough transform)
-    theta = np.pi * angle / 180
-    rho = center_x * cos(theta) + center_y * sin(theta)
-
-    # Corners of rotated bounding box
-    box = cv2.boxPoints(rect)
-
-    return np.vstack(
-        (
-            np.array([[center_x, center_y], [width, height], [theta, rho]]),
-            np.round(np.array(box)),
-        )
-    )
 
 
 def _get_color_dict(clusters):
@@ -225,7 +115,7 @@ def find_barcodes(img):
     bar_boxes = np.zeros((blobs.shape[0], 7, 2))
     for idx in range(blobs.shape[0]):
         coords = blobs[idx]
-        box = _get_bounding_box(coords)
+        box = get_rect(coords)
         bar_boxes[idx, :, :] = box
 
     # Only consider blobs where height ratio > 10 (otherwise its definitely not a bar)
